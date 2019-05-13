@@ -9,6 +9,15 @@ using namespace std;
 
 recursive_mutex m_mutex;
 
+void sleepcp(int milliseconds) // Cross-platform sleep function
+{
+    clock_t time_end;
+    time_end = clock() + milliseconds * CLOCKS_PER_SEC/1000;
+    while (clock() < time_end)
+    {
+    }
+}
+
 void setC(int **C, int x, int y, int len){
 	for(int i = x; i< x+ len; i++){
 		for(int j = y; j < y + len; j++){
@@ -102,7 +111,8 @@ void verify(int** A,int **B, int** C, int n){
 		for( int j = 0 ; j < n ; j++){
 			if(correct[i][j]!=C[i][j])
 				incorrect = true;
-		}
+			cout<<correct[i][j]<<" ";
+		}cout<<endl;
 	} 
 	if(incorrect)
 		cout<<"WRONG ANSWER"<<endl;
@@ -110,6 +120,33 @@ void verify(int** A,int **B, int** C, int n){
 		cout<<"ACCEPTED"<<endl;
 }
 
+void copy(int* dest, int* src, int n){
+	cilk_for(int i = 0 ; i < n ; i++)
+		dest[i]=src[i];
+}
+
+void printCheck(int x, int y, int* a, int* b, int n){
+	synchronized(m_mutex){
+		cout<<"Calculating rEGION "<<x<<"~"<<y<<endl;
+		int** A = get_2d(a,n);
+		int** B = get_2d(b,n);
+		cout<<"Matrix 1"<<endl;
+		for(int i = 0 ; i < n ; i++){
+			for(int j = 0 ; j < n ; j++){
+				cout<<A[i][j]<<" ";
+			}
+			cout<<endl;
+		}
+		cout<<"Matrix 2"<<endl;
+		for(int i = 0 ; i < n ; i++){
+			for(int j = 0 ; j < n ; j++){
+				cout<<B[i][j]<<" ";
+			}
+			cout<<endl;
+		}
+	
+	}
+}
 void multiply(int **A, int **B, int **C, int n, int rootp){
 	int process_id;
 	MPI_Comm_rank(MPI_COMM_WORLD,&process_id);
@@ -129,41 +166,49 @@ void multiply(int **A, int **B, int **C, int n, int rootp){
 	int** ccopy = new int*[size];
 	for(int i = 0 ; i < size; i++)
 		ccopy[i] = new int[size];
+	MPI_Status stat;
+	MPI_Request sendreq[1],recvreq[1];
+	MPI_Comm column;
+	MPI_Comm_split(MPI_COMM_WORLD,y,x,&column);
+	int* orignlB = new int[size*size];
+	copy(orignlB,sendB,size*size);
 	for( int l = 1; l <= rootp; l++){
-		int k = (y + l -1)%rootp;
-		if(k==i){
-			MPI_Bcast(&sendB[0],size*size,MPI_INT,k,MPI_COMM_WORLD);
-		}
+		int k = (y + l -1 )%rootp;
+		MPI_Bcast(&sendB[0],size*size,MPI_INT,k,column);
+		MPI_Barrier(MPI_COMM_WORLD);
+               // printCheck(x*size,y*size,sendA,sendB,size);
 		multiplyMatrix(ccopy,sendA,sendB,size);
 		copyOriginal(C,ccopy,x*size,y*size,size);
+		copy(sendB,orignlB,size*size);
 		if(l<rootp){
 			int left_processor = getProcessorId(x,(rootp+y-1)%rootp,rootp);
 			MPI_Isend(&sendA[0],size*size,MPI_INT,left_processor,0,MPI_COMM_WORLD,&sendreq[0]);
-	        int* dummyA = new int[size*size];
+	       		 int* dummyA = new int[size*size];
 			left_processor = getProcessorId(x,(rootp+y+1)%rootp,rootp);
 			MPI_Irecv(&dummyA[0],size*size,MPI_INT,left_processor,0,MPI_COMM_WORLD,&recvreq[0]);
 			MPI_Wait(&recvreq[0],&stat);
 			sendA = dummyA;
 	 	}
 	}
+	//cout<<"Processor Completed "<<process_id<<endl;
+	//MPI_Barrier(MPI_COMM_WORLD);
+	//if(process_id!=0){
+	 //	int* send = getSlice(C,0,0,n);
+	 //	MPI_Isend(&send[0],n*n,MPI_INT,0,0,MPI_COMM_WORLD,&sendreq[0]);
+	 //}
+	 //else{
+	 //	int* data = new int[n*n];
+	 //	MPI_Request reqst[rootp];
+	  //	for(int i = 1; i < rootp*rootp; i++){
+	 //		MPI_Irecv(&data[0],n*n,MPI_INT,i,0,MPI_COMM_WORLD,&reqst[i]);
+	 //		MPI_Wait(&reqst[i],&stat);
+	 //		addFinal(C,data,n);
+	 //	}
+	 //}
 	MPI_Barrier(MPI_COMM_WORLD);
-	// if(process_id!=0){
-	// 	int* send = getSlice(C,0,0,n);
-	// 	MPI_Isend(&send[0],n*n,MPI_INT,0,0,MPI_COMM_WORLD,&sendreq[0]);
-	// }
-	// else{
-	// 	t2 = MPI_Wtime();
-	// 	int* data = new int[n*n];
-	// 	MPI_Request reqst[rootp];
-	//  	for(int i = 1; i < rootp*rootp; i++){
-	// 		MPI_Irecv(&data[0],n*n,MPI_INT,i,0,MPI_COMM_WORLD,&reqst[i]);
-	// 		MPI_Wait(&reqst[i],&stat);
-	// 		addFinal(C,data,n);
-	// 	}
-	// }
-	// MPI_Barrier(MPI_COMM_WORLD);
-	// if(process_id==0){
-	// 	printf("Time Taken %.6lf\n",t2-t1);
+	if(process_id==0){
+		t2 = MPI_Wtime();
+	 	printf("Time Taken for Type-2 is %.6lf on k = %d and l = %d\n",t2-t1,n,rootp);
 		//cout<<"Multiplication Done"<<endl;
         	//cout<<"Print A"<<endl;
        	 	//print(A,n);
@@ -172,11 +217,11 @@ void multiply(int **A, int **B, int **C, int n, int rootp){
         	//cout<<"Print C"<<endl;
         	//print(C,n);
         	//verify(A,B,C,n);
-	//}
+	}
 }
 
 int main(int argc, char* argv[]){
-	srand(time(NULL));
+	srand(1);
 	int n = atoi(argv[1]);
 	int l = atoi(argv[2]);
 	MPI_Init(&argc,&argv);
@@ -201,13 +246,5 @@ int main(int argc, char* argv[]){
 	}
 	multiply(A,B,C,n,rootp);
 	MPI_Finalize();
-	cout<<"Multiplication Done"<<endl;
-    cout<<"Print A"<<endl;
-    print(A,n);
-    cout<<"Print B"<<endl;
-    print(B,n);
-    cout<<"Print C"<<endl;
-    print(C,n);
-    verify(A,B,C,n);
 	return 0;
 }

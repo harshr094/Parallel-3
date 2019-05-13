@@ -169,8 +169,8 @@ void multiply(int **A, int **B, int **C, int n, int rootp){
 	for(int i = 0 ; i < size; i++)
 		ccopy[i] = new int[size];
 	for( int l = 1; l <= rootp; l++){
-		multiplyMatrix(ccopy,recvA,recvB,size);
-		//multiplyMatrixPar(ccopy,recvA,recvB,size);
+		//multiplyMatrix(ccopy,recvA,recvB,size);
+		multiplyMatrixPar(ccopy,recvA,recvB,size);
 		if(l<rootp){
 			int left_processor = getProcessorId(x,(rootp+y-1)%rootp,rootp);
 			int top_processor = getProcessorId((rootp+x-1)%rootp,y,rootp);
@@ -190,20 +190,20 @@ void multiply(int **A, int **B, int **C, int n, int rootp){
 		copyOriginal(C,ccopy,x*size,y*size,size);
 	}
 	MPI_Barrier(MPI_COMM_WORLD);
-	//if(process_id!=0){
-	//	int* send = getSlice(C,0,0,n);
-	//	MPI_Isend(&send[0],n*n,MPI_INT,0,0,MPI_COMM_WORLD,&sendreq[0]);
-	//}
-	//else{
-	//	int* data = new int[n*n];
-	//	MPI_Request reqst[rootp];
-	//	for(int i = 1; i < rootp*rootp; i++){
-	//		MPI_Irecv(&data[0],n*n,MPI_INT,i,0,MPI_COMM_WORLD,&reqst[i]);
-	//		MPI_Wait(&reqst[i],&stat);
-	//		addFinal(C,data,n);
-	//	}
-	//}
-	//MPI_Barrier(MPI_COMM_WORLD);
+	if(process_id!=0){
+		int* send = getSlice(C,0,0,n);
+		MPI_Isend(&send[0],n*n,MPI_INT,0,0,MPI_COMM_WORLD,&sendreq[0]);
+	}
+	else{
+		int* data = new int[n*n];
+		MPI_Request reqst[rootp];
+		for(int i = 1; i < rootp*rootp; i++){
+			MPI_Irecv(&data[0],n*n,MPI_INT,i,0,MPI_COMM_WORLD,&reqst[i]);
+			MPI_Wait(&reqst[i],&stat);
+			addFinal(C,data,n);
+		}
+	}
+	MPI_Barrier(MPI_COMM_WORLD);
 	if(process_id==0){
 		t2 = MPI_Wtime();
 		printf("Time Taken %.6lf\n",t2-t1);
