@@ -5,9 +5,7 @@
 
 #define synchronized(m) \
     for(std::unique_lock<std::recursive_mutex> lk(m); lk; lk.unlock())
-using namespace std;
 
-recursive_mutex m_mutex;
 
 void setC(int **C, int x, int y, int len){
 	for(int i = x; i< x+ len; i++){
@@ -21,7 +19,7 @@ void setC(int **C, int x, int y, int len){
 int* getSlice(int **array, int x, int y, int len){
 	int *ret = new int[len*len];
 	int count = 0;
-	for(int i = 0 ; i < len; i++){
+	for(int x = 0 ; x < len; x++){
 		for(int j = 0 ; j < len; j++){
 			ret[count++] = array[i+x][j+y];
 		}
